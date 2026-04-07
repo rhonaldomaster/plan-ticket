@@ -25,24 +25,34 @@ Generate a structured implementation plan from a Jira ticket. This skill creates
    - Description (full text)
    - Acceptance criteria (if present)
    - Labels, priority, linked issues
-4. Create the plan folder:
+4. Create the plan folder. Use the tool or method appropriate for the environment:
+   - On macOS/Linux: `mkdir -p .docs/plans/<ticket-id-lowercase>/`
+   - On Windows (PowerShell): `New-Item -ItemType Directory -Force -Path ".docs/plans/<ticket-id-lowercase>/"`
+   - Or use the AI tool's built-in file creation capabilities if available
+
+5. Check for attachments using the raw JSON output. If there are image attachments, extract and download them:
    ```bash
-   mkdir -p .docs/plans/<ticket-id-lowercase>/
-   ```
-5. Check for attachments using the raw JSON output. If there are image attachments, download them:
-   ```bash
-   jira issue view <TICKET_ID> --raw | python3 -c "
+   # Extract attachment URLs from the Jira API response
+   jira issue view <TICKET_ID> --raw | python -c "
    import sys, json
    data = json.load(sys.stdin)
    for a in data.get('fields', {}).get('attachment', []):
        print(a['filename'], a['content'])
    "
    ```
-   Then download each attachment using the Jira CLI login from `~/.config/.jira/.config.yml`:
+   > Note: Use `python` or `python3` depending on the system. Both are equivalent here.
+
+   Then download each attachment using the Jira CLI login:
    ```bash
+   # Read the Jira login from the config file
+   # macOS/Linux:
    JIRA_LOGIN=$(grep '^login:' ~/.config/.jira/.config.yml | awk '{print $2}')
+   # Windows (PowerShell):
+   # $JIRA_LOGIN = (Select-String -Path "$env:USERPROFILE\.config\.jira\.config.yml" -Pattern "^login:" | ForEach-Object { $_.Line.Split(" ")[1] })
+
    curl -s -L -u "$JIRA_LOGIN:$JIRA_API_TOKEN" -o ".docs/plans/<ticket-id>/<filename>" "<content-url>"
    ```
+   > If `curl` is not available, use the AI tool's built-in HTTP/fetch capabilities to download the file.
 
 ## Step 3: Detect Stack & Load Rules
 
@@ -75,9 +85,13 @@ If the stack cannot be detected, ask the user which stack to use before proceedi
 
 ## Step 3a: Explore the Codebase
 
-Launch up to 3 Explore agents in parallel as defined by the loaded stack rules file. The agents should investigate the codebase based on what the ticket describes.
+Investigate the codebase based on the loaded stack rules file. The stack file defines up to 3 areas of exploration that should be performed in parallel when possible.
 
-**Important**: If the scope is unclear after exploration, **ask the user** using AskUserQuestion before finalizing the plan.
+- **Claude Code**: Launch up to 3 Explore agents in parallel (Agent tool with subagent_type=Explore)
+- **Cursor / Windsurf / other AI tools**: Perform the same searches sequentially using the available codebase search tools
+- **Manual use**: Use the exploration checklist as a guide for what to investigate
+
+**Important**: If the scope is unclear after exploration, **ask the user** before finalizing the plan.
 
 If the ticket mentions functionality that overlaps with existing code, verify whether it can be extended before proposing new implementations.
 
@@ -145,7 +159,7 @@ Write the plan to `.docs/plans/<ticket-id-lowercase>/plan.md` using this structu
 
 - **Be prescriptive**: Include exact file paths, line numbers, and copy-pasteable code blocks
 - **Reuse over create**: Always reference existing code before proposing new implementations
-- **Respect project conventions**: Follow the existing code patterns defined in the project's `CLAUDE.md`
+- **Respect project conventions**: Follow the existing code patterns defined in the project's configuration (e.g., `CLAUDE.md`, `.cursorrules`, `.windsurfrules`, or equivalent)
 - **Keep it scannable**: Use tables, numbered lists, and clear headings
 
 ## Step 5: Present Summary & Ask Questions
@@ -165,4 +179,4 @@ After generating the plan:
 - **DO NOT modify any source code files** — only create files inside `.docs/plans/`
 - **Always ask the user** when scope is uncertain or architectural decisions are needed
 - **Always prioritize** existing code and patterns over creating new ones
-- **Always read the project's `CLAUDE.md`** if present, to follow project-specific conventions
+- **Always read the project's configuration file** (`CLAUDE.md`, `.cursorrules`, `.windsurfrules`, or equivalent) if present, to follow project-specific conventions
